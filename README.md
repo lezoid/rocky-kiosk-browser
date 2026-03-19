@@ -16,6 +16,10 @@ Qt WebEngine based kiosk browser for Rocky Linux.
 - Bilingual waiting screen asset
 - Detailed logging modes
 - Basic application-side shortcut suppression
+- External non-HTTP/HTTPS schemes blocked
+- New tab / new window requests redirected into the current window
+- Fullscreen API requests ignored
+- Optional User-Agent override
 
 ## Build
 
@@ -44,12 +48,22 @@ cmake --build build
   --homebutton \
   --backbutton \
   --disable-context-menu \
+  --user-agent="Mozilla/5.0 kiosk-browser" \
   --toolbar-height=64 \
   --page-list-json=./page-list.json \
   --domain-policy-json=./domain-policy.json \
   --log-dir=$HOME/.local/log/make-rocky-bootable \
   --log-mode=debug
 ```
+
+## Navigation behavior
+
+- `Home`, `Back`, `URL`, and `Go` are only added to the toolbar when their flags are enabled
+- links requesting a new tab or window are redirected into the current window
+- only `http` and `https` URLs are allowed for page navigation
+- external schemes such as `mailto:`, `tel:`, `intent:`, and `file:` are blocked
+- fullscreen requests from web content are ignored
+- PDF rendering inside the browser remains allowed
 
 ## JSON configuration
 

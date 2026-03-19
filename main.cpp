@@ -33,6 +33,7 @@
 #include <QWebEngineUrlRequestInfo>
 #include <QWebEngineUrlRequestInterceptor>
 #include <QWebEngineView>
+#include <QWebEngineFullScreenRequest>
 
 namespace {
 constexpr auto WAITING_HTML = R"HTML(
@@ -121,6 +122,7 @@ public:
 
     protected:
         QWebEnginePage *createWindow(QWebEnginePage::WebWindowType type) override;
+        bool acceptNavigationRequest(const QUrl &url, NavigationType type, bool isMainFrame) override;
 
     private:
         BrowserWindow *window_ = nullptr;
@@ -187,6 +189,7 @@ public:
                   bool disableContextMenu,
                   const QString &pageListJson,
                   const QString &domainPolicyJson,
+                  const QString &userAgent,
                   const QString &logDir,
                   LogMode logMode,
                   const QString &startupSummary)
@@ -207,6 +210,9 @@ public:
         view_ = new QWebEngineView(this);
         page_ = new KioskPage(this);
         view_->setPage(page_);
+        if (!userAgent.trimmed().isEmpty()) {
+            view_->page()->profile()->setHttpUserAgent(userAgent.trimmed());
+        }
         setCentralWidget(view_);
         if (disableContextMenu_) {
             view_->setContextMenuPolicy(Qt::NoContextMenu);
@@ -235,15 +241,16 @@ public:
         goButton_ = new QPushButton("Go", this);
         urlBox_->setPlaceholderText("URL");
 
-        toolbar->addWidget(homeButton_);
-        toolbar->addWidget(backButton_);
-        toolbar->addWidget(urlBox_);
-        toolbar->addWidget(goButton_);
-
-        homeButton_->setVisible(showHomeButton);
-        backButton_->setVisible(showBackButton);
-        urlBox_->setVisible(showUrlBox);
-        goButton_->setVisible(showUrlBox);
+        if (showHomeButton) {
+            toolbar->addWidget(homeButton_);
+        }
+        if (showBackButton) {
+            toolbar->addWidget(backButton_);
+        }
+        if (showUrlBox) {
+            toolbar->addWidget(urlBox_);
+            toolbar->addWidget(goButton_);
+        }
 
         homeButton_->setMinimumHeight(controlHeight);
         homeButton_->setMaximumHeight(controlHeight);
@@ -306,6 +313,10 @@ public:
             }
             logDebug("view urlChanged url=" + url.toString());
         });
+        connect(view_->page(), &QWebEnginePage::fullScreenRequested, this, [this](QWebEngineFullScreenRequest request) {
+            request.reject();
+            logNormal("fullscreen request rejected origin=" + request.origin().toString());
+        });
 
         probeTimer_ = new QTimer(this);
         probeTimer_->setInterval(3000);
@@ -344,6 +355,30 @@ public:
     }
 
     void logNormal(const QString &message) { writeLog(message); }
+    bool isAllowedNavigationUrl(const QUrl &url, QString *reason) const {
+        if (!url.isValid() || url.isEmpty()) {
+            *reason = "invalid or empty url";
+            return false;
+        }
+
+        const QString scheme = url.scheme().trimmed().toLower();
+        if (scheme != "http" && scheme != "https") {
+            *reason = "blocked scheme=" + scheme;
+            return false;
+        }
+
+        *reason = "allowed scheme=" + scheme;
+        return true;
+    }
+    void loadUrlInCurrentView(const QUrl &url, const QString &source) {
+        QString reason;
+        if (!isAllowedNavigationUrl(url, &reason)) {
+            logNormal(source + " blocked url=" + url.toString() + " reason=" + reason);
+            return;
+        }
+        logNormal(source + " url=" + url.toString());
+        view_->load(url);
+    }
 
 protected:
     void closeEvent(QCloseEvent *event) override {
@@ -720,6 +755,7 @@ int main(int argc, char *argv[]) {
     parser.addOption(QCommandLineOption(QStringList() << "domain-policy-json", "Domain policy JSON path", "path", ""));
     parser.addOption(QCommandLineOption(QStringList() << "log-dir", "Log directory", "dir", QDir::homePath() + "/.local/log/make-rocky-bootable"));
     parser.addOption(QCommandLineOption(QStringList() << "log-mode", "Log mode: off|normal|debug", "mode", "normal"));
+    parser.addOption(QCommandLineOption(QStringList() << "user-agent", "Override User-Agent string", "ua", ""));
     parser.process(app);
 
     const QUrl homepage = QUrl::fromUserInput(parser.value("homepage"));
@@ -733,6 +769,7 @@ int main(int argc, char *argv[]) {
     const QString domainPolicyJson = parser.value("domain-policy-json").trimmed();
     const QString logDir = parser.value("log-dir").trimmed();
     const LogMode logMode = parseLogMode(parser.value("log-mode"));
+    const QString userAgent = parser.value("user-agent");
     const QString startupSummary =
         "homepage=" + homepage.toString() +
         " check_type=" + checkType +
@@ -744,6 +781,7 @@ int main(int argc, char *argv[]) {
         " disable_context_menu=" + boolString(disableContextMenu) +
         " page_list_json=" + pageListJson +
         " domain_policy_json=" + domainPolicyJson +
+        " user_agent=" + (userAgent.isEmpty() ? QString("<default>") : userAgent) +
         " toolbar_height=" + QString::number(toolbarHeight) +
         " autohomesec=" + QString::number(autoHomeSec);
 
@@ -759,6 +797,7 @@ int main(int argc, char *argv[]) {
                          disableContextMenu,
                          pageListJson,
                          domainPolicyJson,
+                         userAgent,
                          logDir,
                          logMode,
                          startupSummary);
@@ -782,8 +821,52 @@ void BrowserWindow::DomainPolicyInterceptor::interceptRequest(QWebEngineUrlReque
 
 QWebEnginePage *BrowserWindow::KioskPage::createWindow(QWebEnginePage::WebWindowType type) {
     Q_UNUSED(type);
-    if (window_) {
-        window_->logNormal("new window blocked");
+    if (!window_) {
+        return nullptr;
     }
-    return nullptr;
+
+    class PopupRelayPage : public QWebEnginePage {
+    public:
+        explicit PopupRelayPage(BrowserWindow *window)
+            : QWebEnginePage(window), window_(window) {
+            connect(this, &QWebEnginePage::urlChanged, this, [this](const QUrl &url) {
+                if (!window_ || url.isEmpty()) {
+                    return;
+                }
+                window_->loadUrlInCurrentView(url, "popup redirect");
+                deleteLater();
+            });
+        }
+
+    protected:
+        bool acceptNavigationRequest(const QUrl &url, NavigationType type, bool isMainFrame) override {
+            Q_UNUSED(type);
+            Q_UNUSED(isMainFrame);
+            if (window_) {
+                window_->loadUrlInCurrentView(url, "popup navigation");
+            }
+            deleteLater();
+            return false;
+        }
+
+    private:
+        BrowserWindow *window_ = nullptr;
+    };
+
+    window_->logNormal("popup redirected to current view");
+    return new PopupRelayPage(window_);
+}
+
+bool BrowserWindow::KioskPage::acceptNavigationRequest(const QUrl &url, NavigationType type, bool isMainFrame) {
+    Q_UNUSED(type);
+    Q_UNUSED(isMainFrame);
+    if (!window_) {
+        return QWebEnginePage::acceptNavigationRequest(url, type, isMainFrame);
+    }
+    QString reason;
+    if (!window_->isAllowedNavigationUrl(url, &reason)) {
+        window_->logNormal("navigation blocked url=" + url.toString() + " reason=" + reason);
+        return false;
+    }
+    return QWebEnginePage::acceptNavigationRequest(url, type, isMainFrame);
 }
