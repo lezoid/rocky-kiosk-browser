@@ -13,7 +13,7 @@ Qt WebEngine based kiosk browser for Rocky Linux.
 - Optional auto-home timeout
 - Domain allow / deny policy via JSON
 - Page rotation via JSON
-- Bilingual waiting screen asset
+- Locale-aware waiting screen
 - Detailed logging modes
 - Basic application-side shortcut suppression
 - External non-HTTP/HTTPS schemes blocked
@@ -65,6 +65,8 @@ cmake --build build
 - external schemes such as `mailto:`, `tel:`, `intent:`, and `file:` are blocked
 - fullscreen requests from web content are ignored
 - PDF rendering inside the browser remains allowed
+- explicit domain-policy blocks return to the homepage after 10 seconds
+- page load failures also return to the homepage after 10 seconds
 
 ## JSON configuration
 
@@ -106,9 +108,7 @@ Controls automatic page rotation.
 
 See `page-list.json.example` for a sample rotation list.
 
-### `waiting.html`
+The waiting screen is embedded in the application and switches language by runtime locale.
 
-Waiting screen HTML asset used before connectivity checks succeed.
-
-- includes both Japanese and English text
-- intended to be installed alongside the browser runtime
+- Japanese locale shows Japanese text
+- other locales show English text

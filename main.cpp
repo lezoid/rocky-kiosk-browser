@@ -13,6 +13,7 @@
 #include <QJsonObject>
 #include <QKeyEvent>
 #include <QLineEdit>
+#include <QLocale>
 #include <QMainWindow>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -36,9 +37,15 @@
 #include <QWebEngineFullScreenRequest>
 
 namespace {
-constexpr auto WAITING_HTML = R"HTML(
+QString waitingHtmlForLocale() {
+    const bool isJapanese = QLocale::system().language() == QLocale::Japanese;
+    const QString lang = isJapanese ? "ja" : "en";
+    const QString title = isJapanese ? QStringLiteral("接続待機中...") : QStringLiteral("Waiting for connection...");
+    const QString message = isJapanese ? QStringLiteral("ネットワーク疎通を確認しています")
+                                       : QStringLiteral("Checking network connectivity");
+    return QStringLiteral(R"HTML(
 <!doctype html>
-<html lang="ja">
+<html lang="%1">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -67,12 +74,13 @@ constexpr auto WAITING_HTML = R"HTML(
 </head>
 <body>
   <div class="card">
-    <h1>接続待機中...</h1>
-    <p>ネットワーク疎通を確認しています</p>
+    <h1>%2</h1>
+    <p>%3</p>
   </div>
 </body>
 </html>
-)HTML";
+)HTML").arg(lang, title, message);
+}
 
 enum class LogMode {
     Off,
@@ -322,6 +330,15 @@ public:
             }
             logDebug("view urlChanged url=" + url.toString());
         });
+        connect(view_, &QWebEngineView::loadFinished, this, [this](bool ok) {
+            if (ok) {
+                stopDelayedHome();
+                logDebug("view loadFinished ok=true");
+                return;
+            }
+            logNormal("view loadFinished ok=false");
+            scheduleDelayedHome("page load failed");
+        });
         connect(view_->page(), &QWebEnginePage::fullScreenRequested, this, [this](QWebEngineFullScreenRequest request) {
             request.reject();
             logNormal("fullscreen request rejected origin=" + request.origin().toString());
@@ -343,6 +360,13 @@ public:
         pageCycleTimer_ = new QTimer(this);
         pageCycleTimer_->setSingleShot(true);
         connect(pageCycleTimer_, &QTimer::timeout, this, [this]() { advancePageCycle(); });
+
+        delayedHomeTimer_ = new QTimer(this);
+        delayedHomeTimer_->setSingleShot(true);
+        connect(delayedHomeTimer_, &QTimer::timeout, this, [this]() {
+            logNormal("delayed home timeout -> homepage");
+            loadHomepage();
+        });
 
         installEventFilter(this);
         view_->installEventFilter(this);
@@ -366,6 +390,19 @@ public:
     }
 
     void logNormal(const QString &message) { writeLog(message); }
+    void scheduleDelayedHome(const QString &reason) {
+        if (!delayedHomeTimer_) {
+            return;
+        }
+        delayedHomeTimer_->start(10000);
+        logNormal("delayed home scheduled reason=" + reason + " delay_sec=10");
+    }
+    void stopDelayedHome() {
+        if (delayedHomeTimer_ && delayedHomeTimer_->isActive()) {
+            delayedHomeTimer_->stop();
+            logDebug("delayed home canceled");
+        }
+    }
     bool isAllowedNavigationUrl(const QUrl &url, QString *reason) const {
         if (!url.isValid() || url.isEmpty()) {
             *reason = "invalid or empty url";
@@ -610,10 +647,11 @@ private:
         isOnline_ = false;
         successCount_ = 0;
         pageCycleActive_ = false;
+        stopDelayedHome();
         if (pageCycleTimer_) {
             pageCycleTimer_->stop();
         }
-        view_->setHtml(QString::fromUtf8(WAITING_HTML), QUrl("about:blank"));
+        view_->setHtml(waitingHtmlForLocale(), QUrl("about:blank"));
         if (urlBox_->isVisible()) {
             urlBox_->setText("about:blank");
         }
@@ -624,6 +662,7 @@ private:
     void loadHomepage() {
         isOnline_ = true;
         pageCycleActive_ = false;
+        stopDelayedHome();
         if (pageCycleTimer_) {
             pageCycleTimer_->stop();
         }
@@ -653,6 +692,7 @@ private:
         if (isOnline_) {
             logNormal("probe failure while online -> waiting");
             showWaitingPage();
+            scheduleDelayedHome("probe failure");
         }
     }
 
@@ -744,6 +784,7 @@ private:
     QTimer *probeTimer_ = nullptr;
     QTimer *autoHomeTimer_ = nullptr;
     QTimer *pageCycleTimer_ = nullptr;
+    QTimer *delayedHomeTimer_ = nullptr;
 };
 
 int main(int argc, char *argv[]) {
@@ -826,6 +867,7 @@ void BrowserWindow::DomainPolicyInterceptor::interceptRequest(QWebEngineUrlReque
     const bool allowed = isAllowedHost(host, &reason);
     window_->logDomainDecision(info.requestUrl().toString(), host, allowed, reason);
     if (!allowed) {
+        window_->scheduleDelayedHome("domain policy blocked");
         info.block(true);
     }
 }
