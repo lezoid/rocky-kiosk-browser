@@ -233,40 +233,46 @@ public:
         }
         loadPageList();
 
-        auto *toolbar = addToolBar("Navigation");
-        toolbar->setMovable(false);
-        toolbar->setMinimumHeight(toolbarHeight_);
-        toolbar->setMaximumHeight(toolbarHeight_);
-        toolbar->setIconSize(QSize(toolbarHeight_ - 16, toolbarHeight_ - 16));
-
         const int controlHeight = qMax(24, toolbarHeight_ - 8);
         const int lineEditHeight = qMax(22, toolbarHeight_ - 12);
         const int fontPixelSize = qMax(14, toolbarHeight_ * 35 / 100);
+        const bool showToolbar = showHomeButton || showBackButton || showUrlBox;
 
         homeButton_ = new QPushButton("Home", this);
         backButton_ = new QPushButton("Back", this);
-        urlBox_ = new QLineEdit(this);
+        urlBox_ = nullptr;
         goButton_ = nullptr;
-        urlBox_->setPlaceholderText("URL");
 
-        if (showHomeButton) {
-            toolbar->addWidget(homeButton_);
-        }
-        if (showBackButton) {
-            toolbar->addWidget(backButton_);
-        }
-        if (showUrlBox) {
-            goButton_ = new QPushButton("Go", this);
-            toolbar->addWidget(urlBox_);
-            toolbar->addWidget(goButton_);
+        if (showToolbar) {
+            auto *toolbar = addToolBar("Navigation");
+            toolbar->setMovable(false);
+            toolbar->setMinimumHeight(toolbarHeight_);
+            toolbar->setMaximumHeight(toolbarHeight_);
+            toolbar->setIconSize(QSize(toolbarHeight_ - 16, toolbarHeight_ - 16));
+
+            if (showHomeButton) {
+                toolbar->addWidget(homeButton_);
+            }
+            if (showBackButton) {
+                toolbar->addWidget(backButton_);
+            }
+            if (showUrlBox) {
+                urlBox_ = new QLineEdit(this);
+                goButton_ = new QPushButton("Go", this);
+                urlBox_->setPlaceholderText("URL");
+                toolbar->addWidget(urlBox_);
+                toolbar->addWidget(goButton_);
+            }
         }
 
         homeButton_->setMinimumHeight(controlHeight);
         homeButton_->setMaximumHeight(controlHeight);
         backButton_->setMinimumHeight(controlHeight);
         backButton_->setMaximumHeight(controlHeight);
-        urlBox_->setMinimumHeight(lineEditHeight);
-        urlBox_->setMaximumHeight(lineEditHeight);
+        if (urlBox_) {
+            urlBox_->setMinimumHeight(lineEditHeight);
+            urlBox_->setMaximumHeight(lineEditHeight);
+        }
         if (goButton_) {
             goButton_->setMinimumHeight(controlHeight);
             goButton_->setMaximumHeight(controlHeight);
@@ -280,13 +286,17 @@ public:
             goButton_->setFont(buttonFont);
         }
 
-        QFont lineEditFont = urlBox_->font();
-        lineEditFont.setPixelSize(fontPixelSize);
-        urlBox_->setFont(lineEditFont);
-        urlBox_->setStyleSheet(QString("QLineEdit { padding: 0 12px; font-size: %1px; }").arg(fontPixelSize));
+        if (urlBox_) {
+            QFont lineEditFont = urlBox_->font();
+            lineEditFont.setPixelSize(fontPixelSize);
+            urlBox_->setFont(lineEditFont);
+            urlBox_->setStyleSheet(QString("QLineEdit { padding: 0 12px; font-size: %1px; }").arg(fontPixelSize));
+        }
 
         if (disableContextMenu_) {
-            urlBox_->setContextMenuPolicy(Qt::NoContextMenu);
+            if (urlBox_) {
+                urlBox_->setContextMenuPolicy(Qt::NoContextMenu);
+            }
             homeButton_->setContextMenuPolicy(Qt::NoContextMenu);
             backButton_->setContextMenuPolicy(Qt::NoContextMenu);
             if (goButton_) {
@@ -318,14 +328,16 @@ public:
                 view_->load(target);
             });
         }
-        connect(urlBox_, &QLineEdit::returnPressed, this, [this]() {
-            markUserActivity();
-            const auto target = QUrl::fromUserInput(urlBox_->text());
-            logNormal("ui urlbox navigate url=" + target.toString());
-            view_->load(target);
-        });
+        if (urlBox_) {
+            connect(urlBox_, &QLineEdit::returnPressed, this, [this]() {
+                markUserActivity();
+                const auto target = QUrl::fromUserInput(urlBox_->text());
+                logNormal("ui urlbox navigate url=" + target.toString());
+                view_->load(target);
+            });
+        }
         connect(view_, &QWebEngineView::urlChanged, this, [this](const QUrl &url) {
-            if (urlBox_->isVisible()) {
+            if (urlBox_ && urlBox_->isVisible()) {
                 urlBox_->setText(url.toString());
             }
             logDebug("view urlChanged url=" + url.toString());
@@ -370,7 +382,9 @@ public:
 
         installEventFilter(this);
         view_->installEventFilter(this);
-        urlBox_->installEventFilter(this);
+        if (urlBox_) {
+            urlBox_->installEventFilter(this);
+        }
         homeButton_->installEventFilter(this);
         backButton_->installEventFilter(this);
         if (goButton_) {
@@ -652,7 +666,7 @@ private:
             pageCycleTimer_->stop();
         }
         view_->setHtml(waitingHtmlForLocale(), QUrl("about:blank"));
-        if (urlBox_->isVisible()) {
+        if (urlBox_ && urlBox_->isVisible()) {
             urlBox_->setText("about:blank");
         }
         autoHomeTimer_->stop();

@@ -60,6 +60,8 @@ cmake --build build
 
 - `Home`, `Back`, `URL`, and `Go` are only added to the toolbar when their flags are enabled
 - `Go` is shown only when the URL box is enabled
+- the URL input itself is not created when the URL box is disabled
+- if all UI controls are disabled, the toolbar itself is not created
 - links requesting a new tab or window are redirected into the current window
 - only `http` and `https` URLs are allowed for page navigation
 - external schemes such as `mailto:`, `tel:`, `intent:`, and `file:` are blocked
