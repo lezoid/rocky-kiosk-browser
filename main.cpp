@@ -238,8 +238,8 @@ public:
         const int fontPixelSize = qMax(14, toolbarHeight_ * 35 / 100);
         const bool showToolbar = showHomeButton || showBackButton || showUrlBox;
 
-        homeButton_ = new QPushButton("Home", this);
-        backButton_ = new QPushButton("Back", this);
+        homeButton_ = nullptr;
+        backButton_ = nullptr;
         urlBox_ = nullptr;
         goButton_ = nullptr;
 
@@ -251,9 +251,11 @@ public:
             toolbar->setIconSize(QSize(toolbarHeight_ - 16, toolbarHeight_ - 16));
 
             if (showHomeButton) {
+                homeButton_ = new QPushButton("Home", this);
                 toolbar->addWidget(homeButton_);
             }
             if (showBackButton) {
+                backButton_ = new QPushButton("Back", this);
                 toolbar->addWidget(backButton_);
             }
             if (showUrlBox) {
@@ -265,10 +267,14 @@ public:
             }
         }
 
-        homeButton_->setMinimumHeight(controlHeight);
-        homeButton_->setMaximumHeight(controlHeight);
-        backButton_->setMinimumHeight(controlHeight);
-        backButton_->setMaximumHeight(controlHeight);
+        if (homeButton_) {
+            homeButton_->setMinimumHeight(controlHeight);
+            homeButton_->setMaximumHeight(controlHeight);
+        }
+        if (backButton_) {
+            backButton_->setMinimumHeight(controlHeight);
+            backButton_->setMaximumHeight(controlHeight);
+        }
         if (urlBox_) {
             urlBox_->setMinimumHeight(lineEditHeight);
             urlBox_->setMaximumHeight(lineEditHeight);
@@ -278,10 +284,14 @@ public:
             goButton_->setMaximumHeight(controlHeight);
         }
 
-        QFont buttonFont = homeButton_->font();
+        QFont buttonFont = font();
         buttonFont.setPixelSize(fontPixelSize);
-        homeButton_->setFont(buttonFont);
-        backButton_->setFont(buttonFont);
+        if (homeButton_) {
+            homeButton_->setFont(buttonFont);
+        }
+        if (backButton_) {
+            backButton_->setFont(buttonFont);
+        }
         if (goButton_) {
             goButton_->setFont(buttonFont);
         }
@@ -297,29 +307,37 @@ public:
             if (urlBox_) {
                 urlBox_->setContextMenuPolicy(Qt::NoContextMenu);
             }
-            homeButton_->setContextMenuPolicy(Qt::NoContextMenu);
-            backButton_->setContextMenuPolicy(Qt::NoContextMenu);
+            if (homeButton_) {
+                homeButton_->setContextMenuPolicy(Qt::NoContextMenu);
+            }
+            if (backButton_) {
+                backButton_->setContextMenuPolicy(Qt::NoContextMenu);
+            }
             if (goButton_) {
                 goButton_->setContextMenuPolicy(Qt::NoContextMenu);
             }
         }
 
-        connect(homeButton_, &QPushButton::clicked, this, [this]() {
-            logNormal("ui homebutton clicked");
-            loadHomepage();
-            if (pageListEnabled_) {
-                currentPageIndex_ = 0;
-                schedulePageCycle(pageList_.isEmpty() ? 60 : pageList_.first().durationSec);
-            }
-        });
-        connect(backButton_, &QPushButton::clicked, this, [this]() {
-            if (view_->history()->canGoBack()) {
-                logNormal("ui backbutton clicked");
-                view_->back();
-                return;
-            }
-            logNormal("ui backbutton ignored");
-        });
+        if (homeButton_) {
+            connect(homeButton_, &QPushButton::clicked, this, [this]() {
+                logNormal("ui homebutton clicked");
+                loadHomepage();
+                if (pageListEnabled_) {
+                    currentPageIndex_ = 0;
+                    schedulePageCycle(pageList_.isEmpty() ? 60 : pageList_.first().durationSec);
+                }
+            });
+        }
+        if (backButton_) {
+            connect(backButton_, &QPushButton::clicked, this, [this]() {
+                if (view_->history()->canGoBack()) {
+                    logNormal("ui backbutton clicked");
+                    view_->back();
+                    return;
+                }
+                logNormal("ui backbutton ignored");
+            });
+        }
         if (goButton_) {
             connect(goButton_, &QPushButton::clicked, this, [this]() {
                 markUserActivity();
@@ -385,8 +403,12 @@ public:
         if (urlBox_) {
             urlBox_->installEventFilter(this);
         }
-        homeButton_->installEventFilter(this);
-        backButton_->installEventFilter(this);
+        if (homeButton_) {
+            homeButton_->installEventFilter(this);
+        }
+        if (backButton_) {
+            backButton_->installEventFilter(this);
+        }
         if (goButton_) {
             goButton_->installEventFilter(this);
         }
@@ -395,7 +417,7 @@ public:
         showFullScreen();
         showWaitingPage();
         probeTimer_->start();
-        QTimer::singleShot(0, this, [this]() { runProbe(); });
+        QTimer::singleShot(500, this, [this]() { runProbe(); });
     }
 
     void logDomainDecision(const QString &url, const QString &host, bool allowed, const QString &reason) {
@@ -424,6 +446,10 @@ public:
         }
 
         const QString scheme = url.scheme().trimmed().toLower();
+        if (scheme == "data") {
+            *reason = "allowed scheme=data";
+            return true;
+        }
         if (scheme != "http" && scheme != "https") {
             *reason = "blocked scheme=" + scheme;
             return false;

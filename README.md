@@ -62,13 +62,16 @@ cmake --build build
 - `Go` is shown only when the URL box is enabled
 - the URL input itself is not created when the URL box is disabled
 - if all UI controls are disabled, the toolbar itself is not created
+- `Home` and `Back` are not created when their flags are disabled
 - links requesting a new tab or window are redirected into the current window
 - only `http` and `https` URLs are allowed for page navigation
+- internal `data:` navigation is allowed for the embedded waiting screen
 - external schemes such as `mailto:`, `tel:`, `intent:`, and `file:` are blocked
 - fullscreen requests from web content are ignored
 - PDF rendering inside the browser remains allowed
 - explicit domain-policy blocks return to the homepage after 10 seconds
 - page load failures also return to the homepage after 10 seconds
+- the initial connectivity probe starts after a short delay so the waiting screen is rendered first
 
 ## JSON configuration
 
