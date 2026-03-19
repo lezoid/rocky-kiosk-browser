@@ -59,6 +59,7 @@ cmake --build build
 ## Navigation behavior
 
 - `Home`, `Back`, `URL`, and `Go` are only added to the toolbar when their flags are enabled
+- `Go` is shown only when the URL box is enabled
 - links requesting a new tab or window are redirected into the current window
 - only `http` and `https` URLs are allowed for page navigation
 - external schemes such as `mailto:`, `tel:`, `intent:`, and `file:` are blocked

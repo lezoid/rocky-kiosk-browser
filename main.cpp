@@ -238,7 +238,7 @@ public:
         homeButton_ = new QPushButton("Home", this);
         backButton_ = new QPushButton("Back", this);
         urlBox_ = new QLineEdit(this);
-        goButton_ = new QPushButton("Go", this);
+        goButton_ = nullptr;
         urlBox_->setPlaceholderText("URL");
 
         if (showHomeButton) {
@@ -248,6 +248,7 @@ public:
             toolbar->addWidget(backButton_);
         }
         if (showUrlBox) {
+            goButton_ = new QPushButton("Go", this);
             toolbar->addWidget(urlBox_);
             toolbar->addWidget(goButton_);
         }
@@ -256,16 +257,20 @@ public:
         homeButton_->setMaximumHeight(controlHeight);
         backButton_->setMinimumHeight(controlHeight);
         backButton_->setMaximumHeight(controlHeight);
-        goButton_->setMinimumHeight(controlHeight);
-        goButton_->setMaximumHeight(controlHeight);
         urlBox_->setMinimumHeight(lineEditHeight);
         urlBox_->setMaximumHeight(lineEditHeight);
+        if (goButton_) {
+            goButton_->setMinimumHeight(controlHeight);
+            goButton_->setMaximumHeight(controlHeight);
+        }
 
         QFont buttonFont = homeButton_->font();
         buttonFont.setPixelSize(fontPixelSize);
         homeButton_->setFont(buttonFont);
         backButton_->setFont(buttonFont);
-        goButton_->setFont(buttonFont);
+        if (goButton_) {
+            goButton_->setFont(buttonFont);
+        }
 
         QFont lineEditFont = urlBox_->font();
         lineEditFont.setPixelSize(fontPixelSize);
@@ -276,7 +281,9 @@ public:
             urlBox_->setContextMenuPolicy(Qt::NoContextMenu);
             homeButton_->setContextMenuPolicy(Qt::NoContextMenu);
             backButton_->setContextMenuPolicy(Qt::NoContextMenu);
-            goButton_->setContextMenuPolicy(Qt::NoContextMenu);
+            if (goButton_) {
+                goButton_->setContextMenuPolicy(Qt::NoContextMenu);
+            }
         }
 
         connect(homeButton_, &QPushButton::clicked, this, [this]() {
@@ -295,12 +302,14 @@ public:
             }
             logNormal("ui backbutton ignored");
         });
-        connect(goButton_, &QPushButton::clicked, this, [this]() {
-            markUserActivity();
-            const auto target = QUrl::fromUserInput(urlBox_->text());
-            logNormal("ui gobutton clicked url=" + target.toString());
-            view_->load(target);
-        });
+        if (goButton_) {
+            connect(goButton_, &QPushButton::clicked, this, [this]() {
+                markUserActivity();
+                const auto target = QUrl::fromUserInput(urlBox_->text());
+                logNormal("ui gobutton clicked url=" + target.toString());
+                view_->load(target);
+            });
+        }
         connect(urlBox_, &QLineEdit::returnPressed, this, [this]() {
             markUserActivity();
             const auto target = QUrl::fromUserInput(urlBox_->text());
@@ -340,7 +349,9 @@ public:
         urlBox_->installEventFilter(this);
         homeButton_->installEventFilter(this);
         backButton_->installEventFilter(this);
-        goButton_->installEventFilter(this);
+        if (goButton_) {
+            goButton_->installEventFilter(this);
+        }
 
         resize(1280, 800);
         showFullScreen();
